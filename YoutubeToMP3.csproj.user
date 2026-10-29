@@ -3,12 +3,5 @@
   <PropertyGroup>
     <_LastSelectedProfileId>C:\Users\ECHO\Documents\GitHub\YoutubeToMP3\Properties\PublishProfiles\FolderProfile.pubxml</_LastSelectedProfileId>
   </PropertyGroup>
-  <ItemGroup>
-    <Compile Update="AboutBox1.cs">
-      <SubType>Form</SubType>
-    </Compile>
-    <Compile Update="Form1.cs">
-      <SubType>Form</SubType>
-    </Compile>
-  </ItemGroup>
+  <ItemGroup />
 </Project>

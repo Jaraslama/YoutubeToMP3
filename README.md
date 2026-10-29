@@ -1,5 +1,7 @@
-# YoutubeToMP3
-![Animation-ezgif com-optimize](https://github.com/PackJC/YoutubeToMP3/assets/34726562/36668668-4018-4bb1-ae6f-f3f7263c70a2)
+# Rodinný stahovač hudby
 
- 
- This Windows Forms application in C# allows users to download YouTube videos as MP3 files. Users can enter a YouTube URL, and upon clicking the download button, the app uses YoutubeExplode to fetch and download the video. A progress bar updates in real-time, showing the download progress. After downloading, the app converts the video to MP3 using MediaToolkit. Users choose the save location for the MP3 file via a SaveFileDialog. A completion notification pops up once the process is complete. This app provides a user-friendly way to convert YouTube videos into MP3s directly from the desktop.
+Jednoduchá aplikace pro Windows v češtině. Odkazy na videa a skladby z YouTube i YouTube Music můžete přetáhnout do okna nebo je vložit do textového pole a přidat do seznamu. Po stisknutí **Stáhnout MP3 na USB** vyberete připojený vyměnitelný disk a aplikace uloží skladby do jeho kořenové složky.
+
+Skladby se ukládají ve formátu MP3. Během stahování aplikace zobrazuje průběh; odkazy, u kterých stahování selže, zůstanou v seznamu, aby je bylo možné zkusit znovu.
+
+Používejte pouze obsah, který smíte stahovat, a respektujte autorská práva i podmínky služby YouTube.

@@ -1,114 +1,94 @@
-using MediaToolkit.Model;
 using MediaToolkit;
+using MediaToolkit.Model;
 using YoutubeExplode;
 using YoutubeExplode.Videos.Streams;
 
-//urlBox.Text
-namespace YoutubeToMP3{
-	  public class Downloads{
-	  		public async 	  		Task
-DownloadAsync(String url, ProgressBar progress, string fileType) {
+namespace YoutubeToMP3
+{
+    public class Downloads
+    {
+        public static bool IsYouTubeUrl(string url)
+        {
+            if (!Uri.TryCreate(url, UriKind.Absolute, out var uri) ||
+                (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
+                return false;
 
-            // Check if the URL TextBox is empty or null
+            var host = uri.Host;
+            return host.Equals("youtube.com", StringComparison.OrdinalIgnoreCase) ||
+                   host.Equals("www.youtube.com", StringComparison.OrdinalIgnoreCase) ||
+                   host.Equals("m.youtube.com", StringComparison.OrdinalIgnoreCase) ||
+                   host.Equals("music.youtube.com", StringComparison.OrdinalIgnoreCase) ||
+                   host.Equals("youtu.be", StringComparison.OrdinalIgnoreCase) ||
+                   host.Equals("www.youtu.be", StringComparison.OrdinalIgnoreCase);
+        }
+
+        public async Task<string> DownloadToFolderAsync(
+            string url,
+            string destinationFolder,
+            IProgress<double>? progress = null)
+        {
             if (string.IsNullOrWhiteSpace(url))
+                throw new ArgumentException("Odkaz nesmí být prázdný.", nameof(url));
+            if (!Directory.Exists(destinationFolder))
+                throw new DirectoryNotFoundException($"Cílová složka neexistuje: {destinationFolder}");
+
+            if (!IsYouTubeUrl(url))
+                throw new ArgumentException("Odkaz musí vést na YouTube.", nameof(url));
+
+            var uri = new Uri(url);
+            if (uri.Host.Equals("music.youtube.com", StringComparison.OrdinalIgnoreCase))
             {
-                MessageBox.Show("Please enter a YouTube URL.", "Input Required", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                return;
+                var canonicalUri = new UriBuilder(uri) { Host = "www.youtube.com" };
+                url = canonicalUri.Uri.AbsoluteUri;
             }
-            // Validate if the URL is a YouTube URL
-            try
-            {
-                var uri = new Uri(url);
-                var host = uri.Host.ToLower();
-                if (!host.Contains("youtube.com") && !host.Contains("youtu.be"))
-                {
-                    MessageBox.Show("Please enter a valid YouTube URL.", "Invalid URL", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                    return;
-                }
-            }
-            catch (Exception)
-            {
-                MessageBox.Show("Please enter a valid YouTube URL.", "Invalid URL", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                return;
-            }
-            // Initialize YoutubeExplode client and fetch video metadata
+
             var youtube = new YoutubeClient();
             var videoId = YoutubeExplode.Videos.VideoId.Parse(url);
             var video = await youtube.Videos.GetAsync(videoId);
-            var videoTitle = video.Title;
-
-            // Sanitize the video title to be a valid filename
             var invalidChars = Path.GetInvalidFileNameChars();
-            var safeFileName = string.Join("_", videoTitle.Split(invalidChars, StringSplitOptions.RemoveEmptyEntries)).Trim();
+            var safeTitle = string.Join("_", video.Title.Split(invalidChars, StringSplitOptions.RemoveEmptyEntries))
+                .Trim()
+                .TrimEnd('.');
+            if (string.IsNullOrWhiteSpace(safeTitle))
+                safeTitle = videoId.ToString();
 
-            // Use SaveFileDialog to ask the user where to save the MP3 file
-            using (var saveFileDialog = new SaveFileDialog())
+            var outputPath = Path.Combine(destinationFolder, $"{safeTitle}.mp3");
+            for (var suffix = 2; File.Exists(outputPath); suffix++)
+                outputPath = Path.Combine(destinationFolder, $"{safeTitle} ({suffix}).mp3");
+
+            var temporaryPath = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}.mp4");
+            try
             {
-                saveFileDialog.Filter = $"{fileType.ToUpper()} Files|*.{fileType}";
-                saveFileDialog.Title = $"Save {fileType.ToUpper()} File";
-                saveFileDialog.FileName = safeFileName; // Suggest a filename
+                var manifest = await youtube.Videos.Streams.GetManifestAsync(videoId);
+                var audioStreams = manifest.GetAudioOnlyStreams();
+                if (!audioStreams.Any())
+                    throw new InvalidOperationException("Pro toto video není dostupný žádný zvukový stream.");
 
+                var stream = audioStreams.GetWithHighestBitrate();
+                temporaryPath = Path.ChangeExtension(temporaryPath, stream.Container.Name);
+                await youtube.Videos.Streams.DownloadAsync(stream, temporaryPath, progress);
+                if (!File.Exists(temporaryPath) || new FileInfo(temporaryPath).Length == 0)
+                    throw new InvalidDataException("Stažený zvukový stream je prázdný.");
 
-                if (saveFileDialog.ShowDialog() == DialogResult.OK)
+                var inputFile = new MediaFile { Filename = temporaryPath };
+                var outputFile = new MediaFile { Filename = outputPath };
+                await Task.Run(() =>
                 {
-                    // Process the URL and download the video
-                    try
-                    {
-                        // Get the stream manifest and select the best muxed stream (audio + video)
-                        var streamManifest = await youtube.Videos.Streams.GetManifestAsync(videoId);
-                        var streamInfo = streamManifest.GetMuxedStreams().GetWithHighestVideoQuality();
+                    using var engine = new Engine();
+                    engine.GetMetadata(inputFile);
+                    engine.Convert(inputFile, outputFile);
+                });
 
-                        // Temporarily download the video
-                        var videoPath = Path.Combine(Path.GetTempPath(), $"{videoId}.mp4");
+                if (!File.Exists(outputPath) || new FileInfo(outputPath).Length == 0)
+                    throw new InvalidDataException("Převod se nedokončil nebo vytvořil prázdný soubor.");
 
-                        // Initialize the progress bar
-                        progress.Value = 0;
-                        progress.Maximum = 100;
-
-                        // Create an instance of IProgress<double> to report progress
-                        var progressHandler = new Progress<double>(val =>
-                        {
-                            
-                                progress.Value = (int)(val * 100);
-                            
-                        });
-
-                        // Download the video with progress reporting
-                        await youtube.Videos.Streams.DownloadAsync(streamInfo, videoPath, progressHandler);
-
-                        // Convert to MP3 using MediaToolkit
-                        var inputFile = new MediaFile { Filename = videoPath };
-                        var outputFile = new MediaFile { Filename = Path.ChangeExtension(saveFileDialog.FileName, fileType) };
-
-                        using (var engine = new Engine())
-                        {
-                            engine.GetMetadata(inputFile);
-                            engine.Convert(inputFile, outputFile);
-                        }
-
-                        // Clean up the temporary video file
-                        File.Delete(videoPath);
-
-                        // Update UI and show completion message
-                        MessageBox.Show("Download complete!", "Success", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                        url = string.Empty;
-                        progress.Value = 0; // Reset progress bar after completion
-
-                    }
-                    catch (Exception ex)
-                    {
-                        MessageBox.Show($"An error occurred: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                        progress.Value = 0; // Reset progress bar in case of error
-                    }
-                }
+                return outputPath;
             }
-
-
-			}
-
-            public void ClearInfo(TextBox urlInput, ProgressBar progress)
-        {
-            urlInput.Clear();
-            progress.Value = 0;
+            finally
+            {
+                if (File.Exists(temporaryPath))
+                    File.Delete(temporaryPath);
+            }
         }
-}}
+    }
+}
